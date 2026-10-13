@@ -1,0 +1,65 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Quest Court</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<meta name="referrer" content="no-referrer">
+<script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
+<script>
+const STATUS_COLORS={"Working":"#22c55e","Waiting on King":"#eab308","Blocked":"#ef4444","Idle":"#9ca3af","Drafted":"#3b82f6"};
+function wrap(ctx,text,x,y,maxW,lh,maxLines){const words=(text||"").split(/\s+/);let line="",n=0;
+ for(const w of words){const t=line?line+" "+w:w;if(ctx.measureText(t).width>maxW&&line){ctx.fillText(line,x,y);y+=lh;line=w;if(++n>=maxLines-1){line+=" …";break;}}else line=t;}
+ if(line)ctx.fillText(line,x,y);}
+function initials(n){return n.split(/\s+/).map(s=>s[0]).join("").slice(0,2).toUpperCase();}
+function drawCard(bot,img){const c=document.createElement("canvas");c.width=1024;c.height=640;const x=c.getContext("2d");
+ x.fillStyle="rgba(15,23,42,0.92)";x.beginPath();x.roundRect(0,0,1024,640,48);x.fill();
+ const col=STATUS_COLORS[bot.status]||"#9ca3af";x.fillStyle=col;x.fillRect(0,0,1024,14);
+ x.save();x.beginPath();x.arc(150,170,100,0,Math.PI*2);x.clip();
+ if(img){x.drawImage(img,50,70,200,200);}else{x.fillStyle="#334155";x.fillRect(50,70,200,200);x.fillStyle="#fff";x.font="bold 90px sans-serif";x.textAlign="center";x.textBaseline="middle";x.fillText(initials(bot.name),150,175);}
+ x.restore();x.textAlign="left";x.textBaseline="alphabetic";
+ x.fillStyle="#fff";x.font="bold 64px sans-serif";x.fillText(bot.name,290,150);
+ x.fillStyle="#94a3b8";x.font="36px sans-serif";x.fillText(bot.role||"",290,200);
+ x.fillStyle=col;x.beginPath();x.roundRect(290,225,x.measureText(bot.status).width+60,56,28);x.fill();
+ x.fillStyle="#0f172a";x.font="bold 34px sans-serif";x.fillText(bot.status||"—",318,264);
+ x.fillStyle="#cbd5e1";x.font="bold 34px sans-serif";x.fillText("WORKING ON NOW",50,350);
+ x.fillStyle="#fff";x.font="38px sans-serif";wrap(x,bot.working_on,50,405,924,50,5);
+ return c;}
+AFRAME.registerComponent("court",{init(){fetch("data.json",{cache:"no-store"}).then(r=>r.json()).then(d=>{
+ const bots=d.bots,N=bots.length,R=2.2;document.getElementById("stamp").textContent=""+d.exported_at;
+ bots.forEach((b,i)=>{const a=(i/N)*Math.PI*2;const e=document.createElement("a-entity");
+  e.setAttribute("geometry","primitive:plane;width:0.8;height:0.5");e.classList.add("card");
+  e.object3D.position.set(Math.sin(a)*R,1.4+((i%2)?0.25:-0.1),-Math.cos(a)*R);e.object3D.rotation.y=-a;
+  e.object3D.rotateY(0);e.object3D.lookAt(0,e.object3D.position.y,0);
+  const paint=img=>{const tex=new THREE.CanvasTexture(drawCard(b,img));tex.colorSpace=THREE.SRGBColorSpace;
+   e.getObject3D("mesh").material=new THREE.MeshBasicMaterial({map:tex,transparent:true,side:THREE.DoubleSide});};
+  this.el.appendChild(e);e.addEventListener("loaded",()=>{if(b.photo){const im=new Image();im.crossOrigin="anonymous";im.onload=()=>paint(im);im.onerror=()=>paint(null);im.src=b.photo;}else paint(null);});
+ });});}});
+// grab: trigger on a pointed card attaches it to the controller; release drops it in place
+AFRAME.registerComponent("grabber",{init(){this.held=null;
+ this.el.addEventListener("triggerdown",()=>{const hit=this.el.components.raycaster.intersectedEls.find(e=>e.classList.contains("card"));
+  if(hit){this.held=hit;this.el.object3D.attach(hit.object3D);}});
+ this.el.addEventListener("triggerup",()=>{if(this.held){this.el.sceneEl.object3D.attach(this.held.object3D);this.held=null;}});}});
+// desktop drag: click a card to pick it up in front of camera, click again to drop
+AFRAME.registerComponent("mousegrab",{init(){let held=null;const cam=document.getElementById("cam");
+ this.el.addEventListener("click",e=>{const t=e.detail.intersectedEl;
+  if(held){this.el.sceneEl.object3D.attach(held.object3D);held=null;}
+  else if(t&&t.classList.contains("card")){held=t;cam.object3D.attach(t.object3D);}});}});
+</script>
+<style>#stamp{position:fixed;left:8px;bottom:8px;color:#fff;font:12px sans-serif;z-index:9;background:#0008;padding:4px 8px;border-radius:6px}</style>
+</head><body>
+<div id="stamp">loading…</div>
+<a-scene court renderer="colorManagement:true" webxr="optionalFeatures: local-floor, hit-test" xr-mode-ui="enabled:true; XRMode: xr" background="color:#0b1020">
+ <a-entity id="rig">
+  <a-entity id="cam" camera position="0 1.6 0" look-controls wasd-controls>
+   <a-entity cursor="rayOrigin:mouse" raycaster="objects:.card" mousegrab></a-entity>
+  </a-entity>
+  <a-entity laser-controls="hand:right" raycaster="objects:.card;far:10" grabber></a-entity>
+  <a-entity laser-controls="hand:left" raycaster="objects:.card;far:10" grabber></a-entity>
+ </a-entity>
+ <a-entity light="type:ambient;intensity:1"></a-entity>
+</a-scene>
+<script>
+// passthrough: hide background/sky when in AR
+document.querySelector("a-scene").addEventListener("enter-vr",function(){if(this.is("ar-mode")){this.removeAttribute("background");}});
+document.querySelector("a-scene").addEventListener("exit-vr",function(){this.setAttribute("background","color:#0b1020");});
+</script>
+</body></html>
